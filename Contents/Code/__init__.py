@@ -15,6 +15,12 @@ DTV_TOP_MONTH = DTV_ROOT_URL + "/page.php?id=172&lang=uk&vsmaction=listingTopMon
 DTV_TOP_ALLTIME = DTV_ROOT_URL + "/page.php?id=172&lang=uk&vsmaction=listingTopAlltimeViewedProd"
 DTV_TOP_RATING = DTV_ROOT_URL + "/page.php?id=172&lang=uk&vsmaction=listingTopRatingProd"
 
+#streaming doesn't work with Plex
+DTV_STREAMING_PARAM = "&dontusestreaming=1"
+
+DTV_JSON_URL = DTV_ROOT_URL + "/getJSON.php"
+DTV_FEED_LENGTH = 100
+
 LISTS_CACHE_TIMEOUT = 600
 ENTRY_CACHE_TIMEOUT = 3600
 SHORT_CACHE_TIMEOUT = 10
@@ -27,21 +33,7 @@ def Start():
 
 def Debug(var_name, var):
   if DEBUG == 1:
-    Log.Add("Debug: " + var_name + " -> " + str(var))
-    
-
-def Index():
-  dir = MediaContainer("art-default.png", "Details", "demoscene.tv")
-  #dir.AppendItem(FeaturedEntry(DTV_FEATURED))
-  dir.AppendItem(DirectoryItem("cat/lastadded", "Last added productions", _R("icon-default.png")))
-  dir.AppendItem(DirectoryItem("cat/lastreleased", "Latest released productions", _R("icon-default.png")))
-  dir.AppendItem(DirectoryItem("cat/topweek", "Top week viewed productions", _R("icon-default.png")))
-  dir.AppendItem(DirectoryItem("cat/topmonth", "Top month viewed productions", _R("icon-default.png")))
-  dir.AppendItem(DirectoryItem("cat/topalltime", "Top all time viewed productions", _R("icon-default.png")))
-  dir.AppendItem(DirectoryItem("cat/toprating", "Top rated productions", _R("icon-default.png")))
-  dir.AppendItem(WhatIsDemoScene())
-  
-  return dir  
+    Log.Add("Debug: " + var_name + " -> " + str(var))  
 
 
 def GetReleaseDescription(element):
@@ -137,24 +129,9 @@ def ListEntries(url, dirname):
     if len(item.xpath('./td/a/img[contains(@name, "IMG")]')) > 0:
       dir.AppendItem(GetItemDescription(item))
     
-  return dir
+  return dir  
   
   
-def RandomEntry(url):
-  xml = XML.ElementFromString(HTTP.GetCached(url, SHORT_CACHE_TIMEOUT), True)
-  
-  element = xml.xpath('//font[@class="vsm_viewcurrentprodscreenshot"]/a')[0]
-  Debug("Element XML", XML.html.tostring(element));
-  thumbUrl = element.xpath('./img')[0].get("src")
-  Debug("thumbnail URL", thumbUrl)
-  desc = element.xpath('./img')[0].get("alt")
-  Debug("description", desc)
-  title = "Random Demo"
-  Debug("title", title)
-  videoUrl = DTV_ROOT_URL + "/" + element.get("href")
-  Debug("videopage URL", videoUrl)
-  return WebVideoItem(videoUrl, title, desc, "", thumbUrl)
-
 def WhatIsDemoScene():
   thumbUrl = "http://dtv.was.demoscene.tv/was/app/demoscenetv/14/wid.jpg"
   desc = "Report by demscene.tv [DTV]"
@@ -162,6 +139,82 @@ def WhatIsDemoScene():
   videoUrl = "http://flvvod202530.demoscene.tv/demoscene.tv_what_is_demoscene__wid__report__flash.flv"
   return VideoItem(videoUrl, title, desc, "", thumbUrl)
 
+####################################################################################################
+# new JSON-based feed retrieval   
+
+def Cached(url, force=False):
+  return JSON.DictFromString(HTTP.GetCached(url, LISTS_CACHE_TIMEOUT, force))
+
+
+def GetJsonFeed(feed, length):
+  object = Cached(DTV_JSON_URL + "?type=" + feed + "&num=" + str(length) + DTV_STREAMING_PARAM)
+  Debug("Feed URL: ", DTV_JSON_URL + str(id) + DTV_STREAMING_PARAM)
+  Debug("JSON object: ", object)
+  title = object["title"]
+  description = object["description"]
+  Debug("Feed:", title + ": " + description) 
+  return object
+
+def GetJsonFeedTitle(feed):
+  object = GetJsonFeed(feed, 1)
+  if "title" in object:
+    return object["title"]
+  else:
+    return "not found"
+    
+    
+def GetJsonFeedDescription(feed):
+  object = GetJsonFeed(feed, 1)
+  if "title" in object:
+    return object["description"]
+  else:
+    return "not found"
+
+
+def GetValue(key, item):
+  if key in item:
+    value = item[key]
+  else:
+    value = "n/a"
+  Debug("Entry " + key + ": ", value)
+  return value   
+  
+  
+def GetFeedDirectory(feed):
+  feed = GetJsonFeed(feed, DTV_FEED_LENGTH)
+  dir = MediaContainer("art-default.png", title1="demoscene.tv", title2=GetValue("title", feed))
+  
+  for item in feed["items"]:
+    try:
+      title = GetValue("title", item)
+      videoUrl = GetValue("videofile", item)
+      creator = GetValue("creator", item)
+      category = GetValue("category", item)
+      thumbUrl = GetValue("screenshot", item)
+      desc = "Demogroup:\t" + creator + "\n\nPlatform:\t" + category
+      Debug("Entry Desc: ", desc)
+      
+      dir.AppendItem(VideoItem(videoUrl, title, desc, "", thumbUrl))
+    except:
+      Log.Add("Failed to load entry!")
+      
+  Debug("dir", dir)
+  return dir
+
+####################################################################################################
+# Build the menues
+
+def Index():
+  dir = MediaContainer("art-default.png", "Details", "demoscene.tv")
+  dir.AppendItem(DirectoryItem("cat/lastadded", GetJsonFeedTitle("lastadded"), _R("icon-default.png"), GetJsonFeedDescription("lastadded")))
+  dir.AppendItem(DirectoryItem("cat/lastreleased", GetJsonFeedTitle("lastreleased"), _R("icon-default.png"), GetJsonFeedDescription("lastreleased")))
+  dir.AppendItem(DirectoryItem("cat/topweek", "Top week viewed productions", _R("icon-default.png")))
+  dir.AppendItem(DirectoryItem("cat/topmonth", "Top month viewed productions", _R("icon-default.png")))
+  dir.AppendItem(DirectoryItem("cat/topalltime", "Top all time viewed productions", _R("icon-default.png")))
+  dir.AppendItem(DirectoryItem("cat/toprating", "Top rated productions", _R("icon-default.png")))
+  dir.AppendItem(WhatIsDemoScene())
+  return dir
+  
 def HandleVideosRequest(pathNouns, count):
   dir = MediaContainer("art-default.png", "", "")
   if count == 0:
@@ -169,9 +222,9 @@ def HandleVideosRequest(pathNouns, count):
     
   elif count > 1:
     if pathNouns[1] == "lastadded":
-      dir = ListEntries(DTV_LAST_ADDED, "Last Added")
+      dir = GetFeedDirectory("lastadded")
     elif pathNouns[1] == "lastreleased":
-      dir = ListEntries(DTV_LAST_RELEASED, "Last Released")
+      dir = GetFeedDirectory("lastreleased")
     elif pathNouns[1] == "topweek":
       dir = ListEntries(DTV_TOP_WEEK, "Top Week")
     elif pathNouns[1] == "topmonth":
@@ -179,6 +232,6 @@ def HandleVideosRequest(pathNouns, count):
     elif pathNouns[1] == "topalltime":
       dir = ListEntries(DTV_TOP_ALLTIME, "Top All Time")
     elif pathNouns[1] == "toprating":
-      dir = ListEntries(DTV_TOP_RATING, "Top Rating")  
+      dir = ListEntries(DTV_TOP_RATING, "Top Rating")
   
   return dir.ToXML()
