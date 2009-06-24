@@ -208,10 +208,10 @@ def Index():
   dir = MediaContainer("art-default.png", "Details", "demoscene.tv")
   dir.AppendItem(DirectoryItem("cat/lastadded", GetJsonFeedTitle("lastadded"), _R("icon-default.png"), GetJsonFeedDescription("lastadded")))
   dir.AppendItem(DirectoryItem("cat/lastreleased", GetJsonFeedTitle("lastreleased"), _R("icon-default.png"), GetJsonFeedDescription("lastreleased")))
-  dir.AppendItem(DirectoryItem("cat/topweek", "Top week viewed productions", _R("icon-default.png")))
-  dir.AppendItem(DirectoryItem("cat/topmonth", "Top month viewed productions", _R("icon-default.png")))
-  dir.AppendItem(DirectoryItem("cat/topalltime", "Top all time viewed productions", _R("icon-default.png")))
-  dir.AppendItem(DirectoryItem("cat/toprating", "Top rated productions", _R("icon-default.png")))
+  dir.AppendItem(DirectoryItem("cat/topweek", GetJsonFeedTitle("topweek"), _R("icon-default.png"), GetJsonFeedDescription("topweek")))
+  dir.AppendItem(DirectoryItem("cat/topmonth", GetJsonFeedTitle("topmonth"), _R("icon-default.png"), GetJsonFeedDescription("topmonth")))
+  dir.AppendItem(DirectoryItem("cat/alltimetop", GetJsonFeedTitle("alltimetop"), _R("icon-default.png"), GetJsonFeedDescription("alltimetop")))
+  dir.AppendItem(DirectoryItem("cat/toprating", GetJsonFeedTitle("toprating"), _R("icon-default.png"), GetJsonFeedDescription("toprating")))
   dir.AppendItem(WhatIsDemoScene())
   return dir
   
@@ -226,12 +226,12 @@ def HandleVideosRequest(pathNouns, count):
     elif pathNouns[1] == "lastreleased":
       dir = GetFeedDirectory("lastreleased")
     elif pathNouns[1] == "topweek":
-      dir = ListEntries(DTV_TOP_WEEK, "Top Week")
+      dir = GetFeedDirectory("topweek")
     elif pathNouns[1] == "topmonth":
-      dir = ListEntries(DTV_TOP_MONTH, "Top Month")
-    elif pathNouns[1] == "topalltime":
-      dir = ListEntries(DTV_TOP_ALLTIME, "Top All Time")
+      dir = GetFeedDirectory("topmonth")
+    elif pathNouns[1] == "alltimetop":
+      dir = GetFeedDirectory("alltimetop")
     elif pathNouns[1] == "toprating":
-      dir = ListEntries(DTV_TOP_RATING, "Top Rating")
+      dir = GetFeedDirectory("toprating")
   
   return dir.ToXML()
