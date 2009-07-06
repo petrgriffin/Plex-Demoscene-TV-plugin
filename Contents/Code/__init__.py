@@ -1,4 +1,5 @@
 import re, sys, datetime
+from operator import itemgetter
 from PMS import Plugin, Log, DB, Thread, XML, HTTP, JSON, RSS, Utils
 from PMS.MediaXML import MediaContainer, DirectoryItem, WebVideoItem, VideoItem, SearchDirectoryItem
 from PMS.Shorthand import _L, _R
@@ -20,10 +21,13 @@ DTV_STREAMING_PARAM = "&dontusestreaming=1"
 
 DTV_JSON_URL = DTV_ROOT_URL + "/getJSON.php"
 DTV_FEED_LENGTH = 100
+TITLE_CUT_PHRASE = "Demoscene.tv "
 
 LISTS_CACHE_TIMEOUT = 600
 ENTRY_CACHE_TIMEOUT = 3600
 SHORT_CACHE_TIMEOUT = 10
+
+grouplist = {}
 
 ####################################################################################################
 def Start():
@@ -34,138 +38,44 @@ def Start():
 def Debug(var_name, var):
   if DEBUG == 1:
     Log.Add("Debug: " + var_name + " -> " + str(var))  
-
-
-def GetReleaseDescription(element):
-  elems = element.xpath('.//a[@target="_blank"]')
-  if len(elems) > 0:
-    desc = "by " + elems[0].text
-  else:
-    desc = "by unknown artist"
-
-  return desc
-
-def GetPlatform(elememt):
-  elems = element.xpath('.//font[@class="vsm_viewcurrentprodplateforme"]')
-  platform = "on unknown platform"
-  if len(elems) > 0:
-    platform = elems[0].text
-  
-  return platform
-  
-  
-def GetThumbnailUrl(element):
-  thumbUrl = element.xpath('./td/a/img[contains(@name, "IMG")]')[0].get("src")
-  
-  return thumbUrl
-
-
-def GetReleaseTitle(element):
-  title = element.xpath('./td/font[@class="vsm_viewcurrentprodtitle"]/a')[0].text
-  
-  return title
-
-
-def GetReleaseDetailPageUrl(element):
-  url = DTV_ROOT_URL + "/"+ element.xpath('./td/a')[0].get("href")
-  
-  return url
-
-  
-def GetItemDescription(element):
-  Debug("ReleaseEntry XML", XML.html.tostring(element));
-  thumbUrl = GetThumbnailUrl(element)
-  Debug("thumbnail URL", thumbUrl)
-  desc = GetReleaseDescription(element)
-  Debug("description", desc)
-  title = GetReleaseTitle(element)
-  Debug("title", title)
-  detailPageUrl = GetReleaseDetailPageUrl(element)
-  Debug("videopage URL", detailPageUrl)
-  return GetVideoItem(detailPageUrl, title, desc, thumbUrl)  
-  
-
-def GetVideoItem(url, title, description, thumbUrl):
-
-  Debug("Release URL", url);
-  xml = XML.ElementFromString(HTTP.GetCached(url, ENTRY_CACHE_TIMEOUT), True)
-  quality = "unknown"
-  
-  # Get Video URLs by hrefs
-  elements = xml.xpath('.//font[@class="vsm_viewprodfile"]')
-  Debug(" Detail XML", XML.html.tostring(elements[0]))
-  videoUrl = url
-  links= elements[0].xpath('./a')
-  for link in links:
-    href = link.get("href")
-    Debug("href", href)
-    
-    # Parse video URLs from href strings and decide best quality
-    videoUrls = href.split("'")
-    for vidUrl in videoUrls:
-      Debug("videoUrl", videoUrl)
-      if vidUrl.endswith("mp4"):
-        videoUrl = vidUrl
-        quality = "HD"
-        break
-      elif vidUrl.endswith("flv"):
-        videoUrl = vidUrl
-        quality = "SD"
-  
-  Debug("quality", quality)
-  Debug("videoUrl", videoUrl)
-  
-  if quality == "HD" or quality == "SD":
-    return VideoItem(videoUrl, title + " ("+ quality +")", description, "", thumbUrl)
-  else:
-    return WebVideoItem(url, title +" (flash)", description, "", thumbUrl)
-
-  
-def ListEntries(url, dirname):
-  dir = MediaContainer("art-default.png", title1="demoscene.tv", title2=dirname)
-  xml = XML.ElementFromString(HTTP.GetCached(url, LISTS_CACHE_TIMEOUT), True)
-
-  for item in xml.xpath('//table[@class="vsmmainproductiontable"]/tr'):
-    if len(item.xpath('./td/a/img[contains(@name, "IMG")]')) > 0:
-      dir.AppendItem(GetItemDescription(item))
-    
-  return dir  
-  
   
 def WhatIsDemoScene():
   thumbUrl = "http://dtv.was.demoscene.tv/was/app/demoscenetv/14/wid.jpg"
   desc = "Report by demscene.tv [DTV]"
   title = "What Is Demoscene?"
-  videoUrl = "http://flvvod202530.demoscene.tv/demoscene.tv_what_is_demoscene__wid__report__flash.flv"
+  videoUrl = "http://flvvod202530.demoscene.tv/getvideo.php?file=1730_12573_demoscene.tv_what_is_demoscene__wid__report__flash.flv"
   return VideoItem(videoUrl, title, desc, "", thumbUrl)
 
 ####################################################################################################
-# new JSON-based feed retrieval   
+# new JSON-based data query   
 
 def Cached(url, force=False):
   return JSON.DictFromString(HTTP.GetCached(url, LISTS_CACHE_TIMEOUT, force))
 
 
-def GetJsonFeed(feed, length):
-  object = Cached(DTV_JSON_URL + "?type=" + feed + "&num=" + str(length) + DTV_STREAMING_PARAM)
-  Debug("Feed URL: ", DTV_JSON_URL + str(id) + DTV_STREAMING_PARAM)
+def GetJsonQuery(query, length=0):
+  param = ""
+  if length > 0:
+    param = param + "&num=" + str(length) + DTV_STREAMING_PARAM
+  url = DTV_JSON_URL + "?type=" + query + param
+  object = Cached(url)
+  Debug("Retrieved Feed:", object["title"] + ": " + object["description"]) 
+  Debug("Feed URL: ", url)
   Debug("JSON object: ", object)
-  title = object["title"]
-  description = object["description"]
-  Debug("Feed:", title + ": " + description) 
   return object
 
-def GetJsonFeedTitle(feed):
-  object = GetJsonFeed(feed, 1)
+
+def GetJsonQueryTitle(feed):
+  object = GetJsonQuery(feed, 1)
   if "title" in object:
-    return object["title"]
+    return re.sub(TITLE_CUT_PHRASE, "",object["title"])
   else:
     return "not found"
     
     
-def GetJsonFeedDescription(feed):
-  object = GetJsonFeed(feed, 1)
-  if "title" in object:
+def GetJsonQueryDescription(feed):
+  object = GetJsonQuery(feed, 1)
+  if "description" in object:
     return object["description"]
   else:
     return "not found"
@@ -181,37 +91,59 @@ def GetValue(key, item):
   
   
 def GetFeedDirectory(feed):
-  feed = GetJsonFeed(feed, DTV_FEED_LENGTH)
-  dir = MediaContainer("art-default.png", title1="demoscene.tv", title2=GetValue("title", feed))
+  feed = GetJsonQuery(feed, DTV_FEED_LENGTH)
+  dir = MediaContainer("art-default.png", title1="demoscene.tv", title2=re.sub(TITLE_CUT_PHRASE, "", GetValue("title", feed)))
   
   for item in feed["items"]:
     try:
-      title = GetValue("title", item)
+      title = re.sub(TITLE_CUT_PHRASE, "", GetValue("title", item))
       videoUrl = GetValue("videofile", item)
       creator = GetValue("creator", item)
       category = GetValue("category", item)
       thumbUrl = GetValue("screenshot", item)
       desc = "Demogroup:\t" + creator + "\n\nPlatform:\t" + category
-      Debug("Entry Desc: ", desc)
       
       dir.AppendItem(VideoItem(videoUrl, title, desc, "", thumbUrl))
+    
     except:
       Log.Add("Failed to load entry!")
       
-  Debug("dir", dir)
+  return dir
+
+
+def GetList(listname):
+  result = GetJsonQuery(listname)
+  list = result["items"]
+  
+  dir = MediaContainer("art-default.png", title1="demoscene.tv", title2=GetJsonQueryTitle(listname))
+  for id, name in list:
+    Debug("item: ", id +"->" + name)
+    dir.AppendItem(DirectoryItem(id, name, _R("icon-default.png"), name))
+  
+  return dir
+
+def GetPartyYears(id):
+  result = GetJsonQuery("partyyears&id_party=" + id)
+  dir = MediaContainer("art-default.png", title1="demoscene.tv", title2=GetJsonQueryTitle("partyyears&id_party=" + id))
+  dir.AppendItem(DirectoryItem("all_years", "all years", _R("icon-default.png"), "all years"))
+  for item in result["items"]:
+    dir.AppendItem(DirectoryItem(item, item, _R("icon-default.png"), item))
   return dir
 
 ####################################################################################################
 # Build the menues
+####################################################################################################
 
 def Index():
   dir = MediaContainer("art-default.png", "Details", "demoscene.tv")
-  dir.AppendItem(DirectoryItem("cat/lastadded", GetJsonFeedTitle("lastadded"), _R("icon-default.png"), GetJsonFeedDescription("lastadded")))
-  dir.AppendItem(DirectoryItem("cat/lastreleased", GetJsonFeedTitle("lastreleased"), _R("icon-default.png"), GetJsonFeedDescription("lastreleased")))
-  dir.AppendItem(DirectoryItem("cat/topweek", GetJsonFeedTitle("topweek"), _R("icon-default.png"), GetJsonFeedDescription("topweek")))
-  dir.AppendItem(DirectoryItem("cat/topmonth", GetJsonFeedTitle("topmonth"), _R("icon-default.png"), GetJsonFeedDescription("topmonth")))
-  dir.AppendItem(DirectoryItem("cat/alltimetop", GetJsonFeedTitle("alltimetop"), _R("icon-default.png"), GetJsonFeedDescription("alltimetop")))
-  dir.AppendItem(DirectoryItem("cat/toprating", GetJsonFeedTitle("toprating"), _R("icon-default.png"), GetJsonFeedDescription("toprating")))
+  dir.AppendItem(DirectoryItem("cat/lastadded", GetJsonQueryTitle("lastadded"), _R("icon-default.png"), GetJsonQueryDescription("lastadded")))
+  dir.AppendItem(DirectoryItem("cat/lastreleased", GetJsonQueryTitle("lastreleased"), _R("icon-default.png"), GetJsonQueryDescription("lastreleased")))
+  dir.AppendItem(DirectoryItem("cat/topweek", GetJsonQueryTitle("topweek"), _R("icon-default.png"), GetJsonQueryDescription("topweek")))
+  dir.AppendItem(DirectoryItem("cat/topmonth", GetJsonQueryTitle("topmonth"), _R("icon-default.png"), GetJsonQueryDescription("topmonth")))
+  dir.AppendItem(DirectoryItem("cat/alltimetop", GetJsonQueryTitle("alltimetop"), _R("icon-default.png"), GetJsonQueryDescription("alltimetop")))
+  dir.AppendItem(DirectoryItem("cat/toprating", GetJsonQueryTitle("toprating"), _R("icon-default.png"), GetJsonQueryDescription("toprating")))
+  dir.AppendItem(DirectoryItem("cat/groups", GetJsonQueryTitle("listofgroups"), _R("icon-default.png"), GetJsonQueryDescription("listofgroups")))
+  dir.AppendItem(DirectoryItem("cat/parties", GetJsonQueryTitle("listofparties"), _R("icon-default.png"), GetJsonQueryDescription("listofparties")))
   dir.AppendItem(WhatIsDemoScene())
   return dir
   
@@ -220,7 +152,21 @@ def HandleVideosRequest(pathNouns, count):
   if count == 0:
     dir = Index()
     
+  elif count > 3: 
+    if pathNouns[1] == "parties":
+      if pathNouns[3] == "all_years":
+        dir = GetFeedDirectory("lastreleased&party=" + pathNouns[2])
+      else:
+        dir = GetFeedDirectory("lastreleased&party=" + pathNouns[2] + "&yearofparty=" + pathNouns[3]) 
+      
+  elif count > 2:  
+    if pathNouns[1] == "groups": 
+      dir = GetFeedDirectory("lastreleased&group=" + pathNouns[2])  
+    elif pathNouns[1] == "parties":
+      dir = GetPartyYears(pathNouns[2]);  
+      
   elif count > 1:
+    Debug("pathNouns, count",  pathNouns[0] +"/"+ pathNouns[1] +", "+ str(count))
     if pathNouns[1] == "lastadded":
       dir = GetFeedDirectory("lastadded")
     elif pathNouns[1] == "lastreleased":
@@ -232,6 +178,10 @@ def HandleVideosRequest(pathNouns, count):
     elif pathNouns[1] == "alltimetop":
       dir = GetFeedDirectory("alltimetop")
     elif pathNouns[1] == "toprating":
-      dir = GetFeedDirectory("toprating")
-  
+      dir = GetFeedDirectory("alltimetop")
+    elif pathNouns[1] == "groups": 
+      dir = GetList("listofgroups")
+    elif pathNouns[1] == "parties": 
+      dir = GetList("listofparties")
+
   return dir.ToXML()
