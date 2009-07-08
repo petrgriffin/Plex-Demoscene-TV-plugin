@@ -96,13 +96,25 @@ def GetFeedDirectory(feed):
   
   for item in feed["items"]:
     try:
+      # mandatory data
       title = re.sub(TITLE_CUT_PHRASE, "", GetValue("title", item))
       videoUrl = GetValue("videofile", item)
+      thumbUrl = GetValue("screenshot", item)
+      desc = "n/a";
+      
+      # optional metadata
       creator = GetValue("creator", item)
       category = GetValue("category", item)
-      thumbUrl = GetValue("screenshot", item)
-      desc = "Demogroup:\t" + creator + "\n\nPlatform:\t" + category
+      type = GetValue("type", item)
+      event = GetValue("event", item)
+      year_event = GetValue("year_event", item)
+      released_date = GetValue("released_date", item)
+      added_date = GetValue("added_date", item)
+      viewed = GetValue("viewed", item)
       
+      # build description fom metadata
+      desc = "Demogroup:\t"+ creator +"\n\nParty/Event:\t"+ event +" "+ year_event +"\n\nType:\t"+ type +"\nPlatform:\t"+ category +"\nReleased:\t"+ released_date +"\n\nAdded to DTV:\t"+ added_date +"\nViewed on DTV:\t"+ viewed
+        
       dir.AppendItem(VideoItem(videoUrl, title, desc, "", thumbUrl))
     
     except:
